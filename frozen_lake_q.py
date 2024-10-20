@@ -1,69 +1,92 @@
-import gymnasium as gym
-import numpy as np
-import matplotlib.pyplot as plt
-import pickle
+import gymnasium as gym  # Import the Gymnasium library for reinforcement learning environments
+import numpy as np  # Import numpy for numerical operations
+import matplotlib.pyplot as plt  # Import matplotlib for plotting
+import pickle  # Import pickle for saving/loading the Q-table
 
 def run(episodes, is_training=True, render=False):
-
+    # Create the FrozenLake environment
+    # 'FrozenLake-v1': 8x8 grid where the agent needs to reach the goal without falling into holes
+    # 'is_slippery=True': adds randomness to the agent's movement
+    # 'render_mode': 'human' if rendering is enabled, else None
     env = gym.make('FrozenLake-v1', map_name="8x8", is_slippery=True, render_mode='human' if render else None)
 
-    if(is_training):
-        q = np.zeros((env.observation_space.n,env.action_space.n)) #init a 64 x 4 array
+    if is_training:
+        # Initialize Q-table with zeros: 64 states (8x8 grid) and 4 actions (left, down, right, up)
+        q = np.zeros((env.observation_space.n, env.action_space.n))
     else:
-        f = open('frozen_lake8x8.pkl','rb')
+        # Load a pre-trained Q-table from file if not training
+        f = open('frozen_lake8x8.pkl', 'rb')
         q = pickle.load(f)
         f.close()
     
-    learning_rate_a = 0.9 #alpha or learning rate
-    discount_factor_g = 0.9 #gamma or discount factor
+    # Hyperparameters
+    learning_rate_a = 0.9  # Alpha: learning rate, controls how much new info overrides old info
+    discount_factor_g = 0.9  # Gamma: discount factor, measures the importance of future rewards
 
-    epsilon = 1 # 1 = 100% random actions
-    epsilon_decay_rate = 0.0001 #epsilon decay rate. 1/0.0001 = 10,000 episodes
-    rng = np.random.default_rng() #random number generator 
+    epsilon = 1  # Epsilon for epsilon-greedy policy; starts with 100% exploration
+    epsilon_decay_rate = 0.0001  # Rate at which epsilon decays after each episode
+    rng = np.random.default_rng()  # Random number generator instance
 
-    rewards_per_episode = np.zeros(episodes)
+    rewards_per_episode = np.zeros(episodes)  # Track rewards for each episode
 
+    # Loop through each episode
     for i in range(episodes):
+        # Reset the environment to get the initial state (0-63)
+        state = env.reset()[0]
+        terminated = False  # Flag to check if the episode has ended by reaching a hole or goal
+        truncated = False  # Flag to check if the episode ended due to a step limit
 
-        state = env.reset()[0] #states: 0 to 63, 0= top left corner, 63 = bottom right corner
-        terminated = False #True when fall in hole or reach goal
-        truncated=False #True when actions >200
-
-
-        while(not terminated and not truncated):
+        # Continue until the agent reaches the goal or falls in a hole
+        while not terminated and not truncated:
             if is_training and rng.random() < epsilon:
-                action = env.action_space.sample() #actions: 0=left, 1=down, 2=right, 3= up
+                # Exploration: choose a random action if a random number < epsilon
+                action = env.action_space.sample()
             else:
-                action = np.argmax(q[state,:])
+                # Exploitation: choose the action with the highest Q-value for the current state
+                action = np.argmax(q[state, :])
 
-            new_state, reward, terminated, truncated,_ = env.step(action)
+            # Take the action and observe the new state and reward
+            new_state, reward, terminated, truncated, _ = env.step(action)
 
             if is_training:
-                q[state,action] = q[state,action] + learning_rate_a * (reward + discount_factor_g * np.max(q[new_state,:])-q[state,action])
+                # Update Q-value for the current state-action pair using the Q-learning formula
+                q[state, action] = q[state, action] + learning_rate_a * (
+                    reward + discount_factor_g * np.max(q[new_state, :]) - q[state, action]
+                )
             
+            # Move to the new state
             state = new_state
     
-        epsilon = max(epsilon - epsilon_decay_rate,0)
+        # Decay epsilon to reduce exploration over time
+        epsilon = max(epsilon - epsilon_decay_rate, 0)
 
-        if(epsilon==0):
+        # When epsilon reaches 0, reduce the learning rate to avoid drastic updates
+        if epsilon == 0:
             learning_rate_a = 0.001
 
-        if(reward == 1):
+        # Track rewards; reward is 1 only if the agent reaches the goal
+        if reward == 1:
             rewards_per_episode[i] = 1
     
+    # Close the environment
     env.close()
 
+    # Calculate cumulative rewards over the last 100 episodes for smoothing
     sum_rewards = np.zeros(episodes)
     for t in range(episodes):
-        sum_rewards[t] = np.sum(rewards_per_episode[max(0,t-100):(t+1)])
+        sum_rewards[t] = np.sum(rewards_per_episode[max(0, t - 100):(t + 1)])
+    
+    # Plot the cumulative rewards and save as an image
     plt.plot(sum_rewards)
     plt.savefig('frozen_lake8x8.png')
 
+    # Save the Q-table to a file if training
     if is_training:
-        f = open("frozen_lake8x8.pkl","wb")
-        pickle.dump(q,f)
+        f = open("frozen_lake8x8.pkl", "wb")
+        pickle.dump(q, f)
         f.close()
 
+# Entry point to run the script
 if __name__ == '__main__':
-    run(15000)
-    #run(1,is_training=False,render=True)
+    run(15000)  # Train the agent for 15,000 episodes
+    # run(1, is_training=False, render=True)  # Uncomment to watch the trained agent play one episode
